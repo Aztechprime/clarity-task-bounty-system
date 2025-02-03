@@ -2,7 +2,7 @@
 
 ;; Constants
 (define-constant contract-owner tx-sender)
-(define-constant err-owner-only (err u100))
+(define-constant err-owner-only (err u100)) 
 (define-constant err-task-not-found (err u101))
 (define-constant err-already-claimed (err u102))
 (define-constant err-insufficient-funds (err u103))
@@ -10,6 +10,7 @@
 (define-constant err-task-not-completed (err u105))
 (define-constant err-already-rated (err u106))
 (define-constant err-invalid-rating (err u107))
+(define-constant err-already-completed (err u108))
 
 ;; Data structures
 (define-map tasks 
@@ -121,16 +122,15 @@
     (let (
         (task (unwrap! (get-task task-id) err-task-not-found))
     )
-    (if (is-eq (some tx-sender) (get claimant task))
-        (begin
-            (try! (as-contract (stx-transfer? (get bounty task) tx-sender (get creator task))))
-            (map-set tasks
-                { task-id: task-id }
-                (merge task { is-completed: true })
-            )
-            (ok true)
+    (asserts! (is-eq (some tx-sender) (get claimant task)) err-not-claimant)
+    (asserts! (not (get is-completed task)) err-already-completed)
+    (begin
+        (try! (as-contract (stx-transfer? (get bounty task) tx-sender (get creator task))))
+        (map-set tasks
+            { task-id: task-id }
+            (merge task { is-completed: true })
         )
-        err-not-claimant
+        (ok true)
     ))
 )
 
@@ -174,12 +174,11 @@
     (let (
         (task (unwrap! (get-task task-id) err-task-not-found))
     )
-    (if (is-eq tx-sender (get creator task))
-        (begin
-            (try! (as-contract (stx-transfer? (get bounty task) tx-sender tx-sender)))
-            (map-delete tasks { task-id: task-id })
-            (ok true)
-        )
-        err-owner-only
+    (asserts! (is-eq tx-sender (get creator task)) err-owner-only)
+    (asserts! (not (get is-claimed task)) err-already-claimed)
+    (begin
+        (try! (as-contract (stx-transfer? (get bounty task) tx-sender tx-sender)))
+        (map-delete tasks { task-id: task-id })
+        (ok true)
     ))
 )
