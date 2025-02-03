@@ -33,29 +33,23 @@ Clarinet.test({
 });
 
 Clarinet.test({
-    name: "Can complete task flow with ratings",
+    name: "Cannot complete already completed task",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const deployer = accounts.get('deployer')!;
         const worker = accounts.get('wallet_1')!;
         
-        // Create task
-        let block = chain.mineBlock([
+        // Create and claim task
+        chain.mineBlock([
             Tx.contractCall('task-bounty', 'create-task', [
                 types.uint(1000),
                 types.utf8("Test task description")
-            ], deployer.address)
-        ]);
-        
-        // Claim task
-        let claimBlock = chain.mineBlock([
+            ], deployer.address),
             Tx.contractCall('task-bounty', 'claim-task', [
                 types.uint(1)
             ], worker.address)
         ]);
         
-        claimBlock.receipts[0].result.expectOk().expectBool(true);
-        
-        // Complete task
+        // Complete task first time
         let completeBlock = chain.mineBlock([
             Tx.contractCall('task-bounty', 'complete-task', [
                 types.uint(1)
@@ -63,35 +57,42 @@ Clarinet.test({
         ]);
         
         completeBlock.receipts[0].result.expectOk().expectBool(true);
-
-        // Rate worker
-        let rateWorkerBlock = chain.mineBlock([
-            Tx.contractCall('task-bounty', 'rate-worker', [
-                types.uint(1),
-                types.uint(5)
-            ], deployer.address)
-        ]);
-
-        rateWorkerBlock.receipts[0].result.expectOk().expectBool(true);
-
-        // Rate creator
-        let rateCreatorBlock = chain.mineBlock([
-            Tx.contractCall('task-bounty', 'rate-creator', [
-                types.uint(1),
-                types.uint(4)
+        
+        // Try completing again
+        let secondCompleteBlock = chain.mineBlock([
+            Tx.contractCall('task-bounty', 'complete-task', [
+                types.uint(1)
             ], worker.address)
         ]);
+        
+        secondCompleteBlock.receipts[0].result.expectErr().expectUint(108);
+    },
+});
 
-        rateCreatorBlock.receipts[0].result.expectOk().expectBool(true);
-
-        // Check ratings
-        let workerRating = chain.callReadOnlyFn(
-            'task-bounty',
-            'get-user-rating',
-            [types.principal(worker.address)],
-            deployer.address
-        );
-
-        assertEquals(workerRating.result.expectTuple()['avg-rating'], types.uint(5));
+Clarinet.test({
+    name: "Cannot cancel claimed task",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const worker = accounts.get('wallet_1')!;
+        
+        // Create and claim task
+        chain.mineBlock([
+            Tx.contractCall('task-bounty', 'create-task', [
+                types.uint(1000),
+                types.utf8("Test task description")
+            ], deployer.address),
+            Tx.contractCall('task-bounty', 'claim-task', [
+                types.uint(1)
+            ], worker.address)
+        ]);
+        
+        // Try canceling claimed task
+        let cancelBlock = chain.mineBlock([
+            Tx.contractCall('task-bounty', 'cancel-task', [
+                types.uint(1)
+            ], deployer.address)
+        ]);
+        
+        cancelBlock.receipts[0].result.expectErr().expectUint(102);
     },
 });
